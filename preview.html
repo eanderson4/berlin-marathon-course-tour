@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>BMW BERLIN-MARATHON course preview</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+  /* Self-contained for headless rendering: fonts in fonts/ (SIL OFL 1.1),
+     MapLibre in vendor/, course geometry in course/course.js. */
+  @font-face {
+    font-family: 'Space Grotesk'; font-weight: 300 700;
+    src: url(fonts/space-grotesk-latin-var.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'Space Mono'; font-weight: 400;
+    src: url(fonts/space-mono-400-latin.woff2) format('woff2');
+  }
+  @font-face {
+    font-family: 'Space Mono'; font-weight: 700;
+    src: url(fonts/space-mono-700-latin.woff2) format('woff2');
+  }
+  :root {
+    --blue-300: #7E9DFF;
+    --orange-500: #FF6230;
+    --ink-950: #121317;
+    --paper-0: #FFFFFF;
+    --gold-500: #E8B43A;
+    --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    --font-mono: 'Space Mono', 'DejaVu Sans Mono', monospace;
+    /* safe-area insets, landscape */
+    --safe-x: 96px;
+    --safe-b: 72px;
+    --safe-t: 64px;
+  }
+  html.portrait {
+    --safe-x: 72px;
+    --safe-b: 300px;   /* clear of Shorts/Reels UI along the bottom */
+    --safe-t: 220px;
+  }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden;
+    font-family: var(--font-display); }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    background: var(--ink-950); }
+  html.portrait #stage { width: 1080px; height: 1920px; }
+  #map { position: absolute; inset: 0; }
+  .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right { display: none; }
+
+  #vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(to bottom, rgba(0,0,0,.40) 0%, rgba(0,0,0,0) 20%),
+      linear-gradient(to top, rgba(0,0,0,.60) 0%, rgba(0,0,0,0) 26%);
+  }
+
+  /* ---- title, top left, first seconds only -------------------------- */
+  #title {
+    position: absolute; left: var(--safe-x); top: var(--safe-t);
+    color: var(--paper-0); opacity: 0;
+    font-family: var(--font-mono); font-weight: 700;
+    font-size: 30px; letter-spacing: .14em;
+    text-shadow: 0 2px 14px rgba(0,0,0,.85);
+  }
+  #title .sub {
+    font-family: var(--font-display); font-weight: 400; font-size: 22px;
+    letter-spacing: .08em; margin-top: 10px; opacity: .78;
+  }
+  html.portrait #title { font-size: 29px; letter-spacing: .1em; }
+
+  /* ---- distance readout + progress, lower left ---------------------- */
+  #hud {
+    position: absolute; left: var(--safe-x); bottom: var(--safe-b);
+    color: var(--paper-0); opacity: 0;
+    text-shadow: 0 2px 14px rgba(0,0,0,.8);
+  }
+  #hud .mi {
+    font-family: var(--font-mono); font-weight: 700; font-size: 64px;
+    line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  }
+  #hud .mi .u { font-size: 28px; margin-right: 12px; opacity: .85; vertical-align: 4px; }
+  #hud .bar {
+    position: relative; width: 420px; height: 4px; margin-top: 16px;
+    background: rgba(255,255,255,.25); border-radius: 2px;
+  }
+  #hud .bar .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: var(--orange-500); border-radius: 2px;
+  }
+  html.portrait #hud .mi { font-size: 72px; }
+  html.portrait #hud .bar { width: 520px; }
+
+  /* ---- landmark pins, positioned from map.project ------------------- */
+  #pins { position: absolute; inset: 0; pointer-events: none; }
+  .pin { position: absolute; left: 0; top: 0; opacity: 0; will-change: transform; }
+  .pin .stem {
+    position: absolute; left: -1px; bottom: 0; width: 2px; height: 78px;
+    background: linear-gradient(to top, rgba(255,255,255,.95), rgba(255,255,255,.35));
+  }
+  .pin .foot {
+    position: absolute; left: -6px; top: -6px; width: 12px; height: 12px;
+    border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(18,19,23,.55);
+  }
+  .pin .label {
+    position: absolute; left: -2px; bottom: 78px; white-space: nowrap;
+    padding: 9px 16px 10px; border-left: 3px solid var(--paper-0);
+    background: rgba(12,14,22,.80); color: var(--paper-0);
+    font-family: var(--font-display); font-weight: 600; font-size: 28px; line-height: 1.1;
+  }
+  .pin .label .k {
+    font-family: var(--font-mono); font-weight: 400; font-size: 20px;
+    margin-left: 10px; opacity: .75;
+  }
+  .pin .label .s {
+    display: block; font-weight: 400; font-size: 19px; opacity: .72; margin-top: 3px;
+  }
+  .pin.left .label {
+    left: auto; right: -2px; border-left: 0; border-right: 3px solid var(--paper-0);
+    text-align: right;
+  }
+  .pin.gold .label { border-left-color: var(--gold-500); }
+  .pin.gold .foot { background: var(--gold-500); }
+
+  #attrib {
+    position: absolute; right: 26px; bottom: 16px;
+    font-family: var(--font-mono); font-size: 16px; color: rgba(255,255,255,.72);
+    text-shadow: 0 1px 6px rgba(0,0,0,.9);
+  }
+  /* ?clean=1: plate for compositing in an editor. Route, dot, pins and
+     mile markers stay. The OSM/OpenFreeMap and course credit is hidden too,
+     so whatever you composite on top must carry it. */
+  html.clean #title, html.clean #hud, html.clean #attrib { display: none; }
+  html.portrait #attrib {
+    right: auto; left: var(--safe-x); bottom: calc(var(--safe-b) - 70px);
+    width: 900px; font-size: 16px; line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+<script>
+  if (/[?&]portrait=1/.test(location.search)) document.documentElement.classList.add('portrait');
+  if (/[?&]clean=1/.test(location.search)) document.documentElement.classList.add('clean');
+</script>
+<div id="stage">
+  <div id="map"></div>
+  <div id="vignette"></div>
+  <div id="pins"></div>
+
+  <div id="title">
+    BMW BERLIN-MARATHON · COURSE PREVIEW
+    <div class="sub">26.2 mi · Start Straße des 17. Juni</div>
+  </div>
+
+  <div id="hud">
+    <div class="mi"><span class="u">MI</span>0.0</div>
+    <div class="bar"><div class="fill"></div></div>
+  </div>
+
+  <div id="attrib">Map data &copy; OpenStreetMap contributors &middot; tiles by OpenFreeMap &middot; course: BMW BERLIN-MARATHON (SCC EVENTS)</div>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="course/course.js"></script>
+<script src="timeline-preview.js"></script>
+<script src="preview.js"></script>
+</body>
+</html>

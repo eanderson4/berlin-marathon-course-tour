@@ -1,0 +1,16 @@
+# Organiser GPX has no open licence; course.js is a resampled copy of it.
+# Both are fetched/built locally by course/build-course.py.
+course/*.gpx
+course/course.js
+
+# Render output
+frames/
+renders/
+*.mp4
+*.mov
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
